@@ -15,12 +15,12 @@ const OWNERS = ['KAM Zona Oriente', 'KAM Zona Sur', 'KAM Zona Centro', 'Hunting'
 const STAGES = [['por_decidir', 'Por decidir'], ['evaluacion', 'En evaluación'], ['contactado', 'Contactado'], ['accion', 'Acción en curso'], ['medido', 'Resultado medido']];
 const NEXT_STAGE = { evaluacion: 'contactado', contactado: 'accion', accion: 'medido' };
 const RPAGES = [
-  ['signals', 'Señales', 'broadcast'], ['cartera', 'Cartera de aliados', 'storefront'], ['zonas', 'Mapa de zonas', 'map-trifold'],
-  ['seguimiento', 'Seguimiento', 'kanban'], ['regla', 'Regla y calibración', 'sliders-horizontal'], ['piloto', 'Piloto y KPIs', 'target'], ['datos', 'Datos', 'database'],
+  ['signals', 'Resumen'], ['cartera', 'Aliados'], ['zonas', 'Mapa de zonas'], ['seguimiento', 'Seguimiento'],
+  ['piloto', 'Piloto y KPIs'], ['regla', 'Regla'], ['datos', 'Datos'], ['guia', 'Cómo leer el panel'],
 ];
 const TABLE_INFO = {
   restaurants: 'Aliados con atributos de audiencia y concentración', dishes: 'Platos y precios', users: 'Personas (30 con perfil público)', follows: 'Quién sigue a quién (perfiles afines)',
-  saves: 'Guardados "Quiero probar": fuente de la serie MAPPI', orders: 'Pedidos originados en MAPPI', reviews: 'Opiniones con compra verificada', external_content: 'Contenido de redes enlazado',
+  saves: 'Guardados "Quiero probar": fuente de la serie MAPPI', orders: 'Pedidos originados en MAPPI', reviews: 'Me gusta con compra verificada (sin comentarios)', external_content: 'Contenido de redes enlazado',
   signals_weekly: 'Series semanales externas e internas', mappi_funnel_daily: 'Exposición y aperturas por día', events: 'Registro de eventos de esta sesión', decisions: 'Decisiones del equipo',
   alert_history: 'Alertas cerradas (para medir precisión)', unmatched_searches: 'Búsquedas sin resultado', hypotheses: 'Hipótesis abiertas', zones: 'Comunas y cobertura externa',
   wallet_ledger: 'Movimientos de Monedas MAPPI', coupons: 'Beneficios canjeados', benefits: 'Catálogo de beneficios', signal_feed: 'Señales iniciales del feed', signal_ticker: 'Señales simuladas de ingesta',
@@ -41,11 +41,11 @@ const EVENT_DICT = {
   view_external: ['Vio contenido de redes', 'Interés externo confirmado', 'play'],
   open_menu: ['Abrió el menú', 'Embudo: abrieron el menú', 'receipt'],
   order: ['Pidió', 'Pedidos y embudo: compraron', 'shopping-bag'],
-  receive: ['Recibió el pedido', 'Habilita la opinión verificada', 'truck'],
-  review: ['Opinó con compra verificada', 'Validación MAPPI', 'seal-check'],
-  review_edit: ['Editó su opinión', 'Validación MAPPI (sin monedas)', 'seal-check'],
-  review_rejected: ['Intentó opinar sin compra', 'Bloqueado: sin compra verificada', 'shield-check'],
-  skip_review: ['Omitió la opinión', 'Tasa de respuesta', 'clock'],
+  receive: ['Recibió el pedido', 'Habilita el me gusta verificado', 'truck'],
+  review: ['Dio me gusta con compra verificada', 'Validación MAPPI', 'heart'],
+  review_edit: ['Repitió un me gusta', 'Validación MAPPI (sin monedas)', 'heart'],
+  review_rejected: ['Intentó dar me gusta sin compra', 'Bloqueado: sin compra verificada', 'shield-check'],
+  skip_review: ['No dio me gusta', 'Tasa de respuesta', 'clock'],
   redeem: ['Canjeó monedas', 'Costo del incentivo', 'ticket'],
   redeem_fail: ['El canje falló', 'Saldo sin cambios', 'warning'],
   radar_open: ['Radar abrió la ficha del aliado', 'Uso de Radar', 'presentation-chart'],
@@ -59,15 +59,21 @@ const decisionFor = id => Q.decisionFor(id);
 const scoreCell = t => `<span class="score"><span>${t}</span><span class="meter" aria-hidden="true"><i style="width:${t}%"></i></span></span>`;
 const stateTag = e => `<span class="tag ${ESTADO[e][1]}">${ESTADO[e][0]}</span>`;
 
+/* ---------- Estructura del panel: pantalla de oficina, barra superior y pestañas ---------- */
 function renderRadar() {
   const r = S.r, alerts = Engine.board().filter(b => b.a.estado === 'alerta').length;
-  const page = r.open ? radarDetail(r.open) : ({ signals: radarSignals, cartera: radarCartera, zonas: radarZonas, seguimiento: radarSeguimiento, regla: radarRegla, piloto: radarPiloto, datos: radarDatos }[r.page])();
-  return `<div class="radar-layout">
-    <nav class="rnav" aria-label="Secciones de Radar">
-      ${RPAGES.map(([k, l, ic]) => `<button data-a="rpage" data-v="${k}" aria-current="${r.page === k && !r.open}">${icon(ic)}${l}${k === 'signals' ? `<span class="cnt">${alerts}</span>` : k === 'seguimiento' ? `<span class="cnt">${DB.data.decisions.length}</span>` : ''}</button>`).join('')}
-      <div class="rnav-note">Panel interno para Hunting, KAM y quien prioriza la cartera. <b style="color:var(--fg)">Radar propone; una persona decide.</b></div>
-    </nav>
-    <div class="rmain ${r._anim ? 'fade-in' : ''}">${page}</div>
+  const page = r.open ? radarDetail(r.open) : ({ signals: radarSignals, cartera: radarCartera, zonas: radarZonas, seguimiento: radarSeguimiento, regla: radarRegla, piloto: radarPiloto, datos: radarDatos, guia: radarGuia }[r.page])();
+  return `<div class="rd-screen">
+    <header class="rd-top">
+      <div class="rd-brand">Rappi <span>Radar · Hunting Santiago</span></div>
+      <span class="rd-live"><i></i>Datos de hoy · actualizado <b class="mono" id="feed-upd">${clockS()}</b></span>
+      <button class="rd-ghost" data-a="exportCartera">${icon('download-simple')}Exportar</button>
+      <span class="rd-user" title="Equipo de Hunting">HS</span>
+    </header>
+    <nav class="rd-nav" aria-label="Secciones de Radar"><div class="rd-pills">
+      ${RPAGES.map(([k, l]) => `<button class="rd-pill" data-a="rpage" data-v="${k}" aria-current="${r.page === k && !r.open}">${l}${k === 'signals' && alerts ? `<em>${alerts}</em>` : k === 'seguimiento' && DB.data.decisions.length ? `<em>${DB.data.decisions.length}</em>` : ''}</button>`).join('')}
+    </div></nav>
+    <div class="rd-scroll" id="rd-scroll"><div class="rmain ${r._anim ? 'fade-in' : ''}">${page}</div></div>
   </div>`;
 }
 
@@ -83,7 +89,7 @@ function radarPlot(board, top = []) {
   }));
   const wedge = `M${C},${C} L${C},${C - 192} A192,192 0 0,1 ${(C + 192 * Math.sin(Math.PI / 4.5)).toFixed(1)},${(C - 192 * Math.cos(Math.PI / 4.5)).toFixed(1)} Z`;
   return `<svg class="radar-svg" viewBox="-62 -6 524 412" role="group" aria-label="Radar de aliados: ${groups.alerta.length} para revisión, ${groups.obs.length} en observación">
-    <defs><radialGradient id="rg" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#FF441F" stop-opacity=".16"/><stop offset="1" stop-color="#FF441F" stop-opacity="0"/></radialGradient></defs>
+    <defs><radialGradient id="rg" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#DE3410" stop-opacity=".10"/><stop offset="1" stop-color="#DE3410" stop-opacity="0"/></radialGradient></defs>
     <circle cx="${C}" cy="${C}" r="192" fill="url(#rg)"/>
     ${[80, 142, 192].map(r => `<circle cx="${C}" cy="${C}" r="${r}" class="ring"/>`).join('')}
     ${[0, 60, 120].map(a => `<line x1="${C + 192 * Math.cos(a * Math.PI / 180)}" y1="${C + 192 * Math.sin(a * Math.PI / 180)}" x2="${C - 192 * Math.cos(a * Math.PI / 180)}" y2="${C - 192 * Math.sin(a * Math.PI / 180)}" class="spoke"/>`).join('')}
@@ -113,55 +119,119 @@ function feedHTML() {
       <div style="display:flex;justify-content:space-between;align-items:center"><span class="fine mono">${clock(Date.parse(f.ts))}</span>${rs ? `<button class="sig-btn" data-a="ropen" data-r="${rs.id}">Analizar aliado</button>` : ''}</div></div>`;
   }).join('');
 }
+/* ---------- Resumen (portada del panel) ---------- */
+// Mini gráfico de línea para las tarjetas
+function spark(vals, color = 'var(--accent)') {
+  const w = 200, h = 26, mx = Math.max(...vals, 1), mn = Math.min(...vals, 0);
+  const pts = vals.map((v, i) => `${(i / (vals.length - 1) * w).toFixed(1)},${(h - (v - mn) / ((mx - mn) || 1) * (h - 4) - 2).toFixed(1)}`).join(' ');
+  return `<svg class="odk-spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg>`;
+}
+// Definiciones que abre la "i" de cada tarjeta
+const KPI_DEFS = {
+  alerta: 'Aliados que cumplen las <b>4 condiciones</b> de la regla: perfil objetivo, distintas personas, se repite y se sostiene. Son los que conviene revisar primero.',
+  senales: 'Cambios detectados hoy en <b>5 fuentes</b>: TikTok, reseñas de Google, Instagram, búsquedas en Rappi y MAPPI. Cada señal se suma al aliado que corresponde.',
+  likes: 'Me gusta que dieron personas que <b>compraron y recibieron</b> el plato. No hay comentarios: es una señal limpia y verificada.',
+  anticipa: 'Semanas promedio entre la primera señal y el alza en pedidos, en alertas pasadas que terminaron en <b>acción justificada</b>.',
+  zona: 'Comuna con más aliados en revisión y mayor puntaje. Sirve para decidir dónde enfocar al equipo esta semana.',
+  demanda: 'Búsquedas en Rappi que <b>no encontraron resultado</b> en 7 días. Muestran lo que la gente quiere y todavía no está en la app.',
+};
+function odk(k, { cls = '', title, value, valueCls = '', sub, link, linkA, extra = '' }) {
+  const open = S.r.def === k;
+  return `<div class="odk ${cls} ${open ? 'def-open' : ''}">
+    <div class="odk-h"><span>${title}</span><button class="odk-i" data-a="rdef" data-v="${k}" aria-expanded="${open}" aria-label="Qué significa ${esc(title)}">i</button></div>
+    <span class="odk-v ${valueCls}">${value}</span>
+    <p class="odk-s">${sub}</p>${extra}
+    <button class="odk-a" ${linkA}>${link} ›</button>
+    ${open ? `<div class="odk-d" role="note">${KPI_DEFS[k]}<br><button class="odk-gl" data-a="rpage" data-v="guia">Ver glosario</button></div>` : ''}
+  </div>`;
+}
 function radarSignals() {
-  const r = S.r, board = Engine.board(), feed = DB.data.session.radarFeed;
-  const mappiToday = DB.data.events.filter(e => e.user_id === 'u_me').length;
+  const r = S.r, board = Engine.board(), feed = DB.data.session.radarFeed, k = Engine.kpis(), d = DB.data, now = DB.nowMs();
   const top = board.filter(b => b.a.estado === 'alerta' || b.a.estado === 'obs').slice(0, 6);
   const cc = Engine.analyze(r.chartId), gi = cc.gi, gp = cc.ordersGrowth;
   const ins = gp > 100 ? 'Los pedidos ya acompañan al interés: el crecimiento es visible en ventas.' : (gi - gp > 50 ? 'Hay una brecha entre interés y ventas: es la ventana para actuar antes que la competencia.' : 'No hay una brecha clara entre interés y ventas.');
-  const um = [...DB.data.unmatched_searches].sort((a, b) => b.count_7d - a.count_7d).slice(0, 5);
-  return `<div class="rgrid"><div class="rcol">
-    <div class="rhead"><div><h1>Hola, equipo de Hunting</h1><p>Aliados que ya están en Rappi, con interés que crece antes de notarse en pedidos. Últimas 8 semanas, datos ficticios.</p></div>
-      <span class="live"><span class="live-dot"></span>Ingesta activa</span></div>
-    <div class="radar-hero">
-      <div class="panel radar-panel"><h3>${icon('crosshair')}Radar de la cartera</h3>${radarPlot(Engine.board(), top)}
-        <p class="fine">Más cerca del centro, mayor puntaje. Los números coinciden con la lista de prioridad. Toca un punto para ver la evidencia.</p></div>
-      <div class="panel prio"><h3>${icon('lightning')}Prioridad de hoy</h3>
-        ${top.map((b, i) => { const best = [...b.parts].sort((x, y) => y.v / y.max - x.v / x.max)[0], dec = decisionFor(b.a.r.id); return `<button class="prio-row" data-a="ropen" data-r="${b.a.r.id}">
-          <span class="mono muted">${i + 1}</span>${thumb(b.a.r)}<span class="tx"><b>${esc(b.a.r.name)}</b><span>${esc(best.why)}</span></span>
-          <span class="end">${scoreCell(b.total)}${dec ? `<span class="tag t-vio">${esc(dec.option)}</span>` : stateTag(b.a.estado)}</span></button>`; }).join('')}</div>
-    </div>
-    <div class="kpis">
-      <button class="kpi" data-a="rfilter" data-v="alerta"><div class="k">Para revisión</div><div class="v">${board.filter(b => b.a.estado === 'alerta').length}</div><div class="s">cumplen las 4 condiciones</div></button>
-      <button class="kpi" data-a="rfilter" data-v="obs"><div class="k">En observación</div><div class="v">${board.filter(b => b.a.estado === 'obs').length}</div><div class="s">alguna fuente subió 2 semanas</div></button>
-      <div class="kpi"><div class="k">Señales hoy</div><div class="v" id="kpi-sig">${23 + feed.length - 6}</div><div class="s">en 5 fuentes</div></div>
-      <button class="kpi" data-a="view" data-v="conectado"><div class="k">Acciones en MAPPI (sesión)</div><div class="v">${mappiToday}</div><div class="s">ver flujo conectado</div></button>
-    </div>
-    <div class="panel" style="display:grid;gap:12px">
-      <div class="chart-head"><div><h3 style="margin:0">Interés combinado vs. pedidos</h3><p class="fine" style="margin-top:4px">Índice de 5 fuentes (promedio del período = 100) contra pedidos reales</p></div>
-        <select data-f="chartId" aria-label="Aliado del gráfico" style="width:auto">${board.map(b => `<option value="${b.a.r.id}" ${b.a.r.id === r.chartId ? 'selected' : ''}>${esc(b.a.r.name)}</option>`).join('')}</select></div>
-      <div class="legend"><span><i style="background:var(--accent)"></i>Interés combinado</span><span><i class="dash"></i>Pedidos</span></div>
-      <div class="chart-wrap"><canvas id="mainChart" aria-label="Gráfico de interés y pedidos de ${esc(cc.r.name)}"></canvas></div>
-      <div class="insight">${icon('lightning')}<span>En 8 semanas el interés por <b>${esc(cc.r.name)}</b> cambió <b>${pct(gi)}</b> y los pedidos <b>${pct(gp)}</b>. ${ins}</span></div>
-    </div>
-    <div class="two">
-      <div class="panel"><h3>Entrada 1: mercado externo <span class="tag t-warn">Acceso por validar</span></h3>
-        ${[['tiktok-logo', 'TikTok: videos y menciones', 'Activa', 't-good'], ['google-logo', 'Reseñas de Google', 'Activa', 't-good'], ['instagram-logo', 'Instagram: menciones', 'Activa', 't-good'], ['map-pin', 'Cobertura en San Miguel y Maipú', 'Faltante', 't-mut']].map(([ic, l, s, t]) => `<div class="src"><span class="l">${icon(ic)}${l}</span><span class="tag ${t}">${s}</span></div>`).join('')}</div>
-      <div class="panel"><h3>Entrada 2: comportamiento interno</h3>
-        ${[['magnifying-glass', 'Búsquedas y visitas a menús', 'Activa', 't-good'], ['receipt', 'Pedidos y recompra', 'Activa', 't-good'], ['bookmark-simple', 'MAPPI: guardados, opiniones, perfiles afines', 'Activa', 't-good'], ['coins', 'Opiniones con monedas', 'Se leen aparte', 't-vio']].map(([ic, l, s, t]) => `<div class="src"><span class="l">${icon(ic === 'coins' ? 'ticket' : ic)}${l}</span><span class="tag ${t}">${s}</span></div>`).join('')}</div>
-    </div>
-    <div class="two">
-      <div class="panel"><h3>${icon('question')}Demanda sin oferta</h3><p class="fine" style="margin:-4px 0 8px">Búsquedas sin resultado en los últimos 7 días. Pistas para Hunting de aliados que aún no están en Rappi.</p>
-        ${um.map(u => `<div class="src"><span><b>"${esc(u.query)}"</b> <span class="fine">${esc(u.comuna)}</span></span><span class="mono">${u.count_7d} <span class="${u.count_7d > u.count_prev ? 'delta-up' : 'muted'}" style="font-size:12px">${u.count_prev ? pct(Math.round((u.count_7d - u.count_prev) / u.count_prev * 100)) : 'nueva'}</span></span></div>`).join('')}</div>
-      <div class="panel"><h3>${icon('flow-arrow')}Hipótesis abiertas</h3>
-        ${DB.data.hypotheses.map(h => `<button class="src" style="width:100%;text-align:left" data-a="ropen" data-r="${h.restaurant_id}"><span><b style="font-size:13.5px">${esc(h.title)}</b><div class="fine">${esc(h.text)}</div></span><span class="tag ${h.status === 'Para revisión' ? 't-acc' : h.status === 'En evaluación' ? 't-vio' : 't-mut'}">${esc(h.status)}</span></button>`).join('')}</div>
-    </div>
-  </div>
-  <aside class="feedbox" aria-label="Señales de cambio en tiempo real">
-    <div class="feed-head"><div class="feed-title"><span class="pulse"></span>Señales en tiempo real</div>
-      <div class="feed-meta"><span>Actualizado: <b class="mono" id="feed-upd">${clockS()}</b></span><span><b class="mono" id="feed-count">${feed.length}</b> en la sesión</span></div></div>
-    <div class="feed" id="feed" tabindex="0" role="region" aria-label="Señales recientes">${feedHTML()}</div>
-  </aside></div>`;
+  const um = [...d.unmatched_searches].sort((a, b) => b.count_7d - a.count_7d);
+  // Series semanales para los mini gráficos
+  const sigWeeks = [...Array(8)].map((_, i) => d.signals_weekly.filter(s => s.kind === 'externa').reduce((a, s) => a + (s.values[i] || 0), 0));
+  const likeWeeks = [...Array(8)].map((_, i) => d.reviews.filter(x => { const age = Math.floor((now - Date.parse(x.created_at)) / (7 * DAY)); return 7 - age === i; }).length);
+  const likes7 = likeWeeks[7], likesPrev = likeWeeks[6] || 1;
+  const sigToday = 23 + feed.length - 6;
+  const zoneScore = d.zones.map(z => { const bs = board.filter(b => b.a.r.zone === z.id); return { z, al: bs.filter(b => b.a.estado === 'alerta').length, mx: bs.length ? Math.max(...bs.map(b => b.total)) : 0, n: bs.length }; }).sort((a, b) => b.al - a.al || b.mx - a.mx);
+  const hot = zoneScore[0];
+  const gUp = (a, b) => { const g = Math.round((a - b) / Math.max(1, b) * 100); return `<span class="${g >= 0 ? 'up' : 'dn'}">${g >= 0 ? '▲' : '▼'} ${Math.abs(g)}%</span>`; };
+  const lead = top[0], best = lead && [...lead.parts].sort((x, y) => y.v / y.max - x.v / x.max)[0];
+  return `
+    <section class="od-sec" id="sec-resumen">
+      <div class="od-sh"><div><h2>Resumen de hoy</h2><p>Aliados que ya están en Rappi y cuyo interés crece antes de notarse en pedidos. Toca la <b>i</b> de cada tarjeta para ver qué significa.</p></div>
+        <button class="od-link" data-a="rpage" data-v="guia">¿Cómo leer este panel?</button></div>
+      <div class="od-kpis">
+        ${odk('alerta', { cls: 'hl', title: 'Para revisión', value: k.alerts, sub: `cumplen las 4 condiciones · ${k.obs} más en observación`, link: 'Ver aliados', linkA: 'data-a="rfilter" data-v="alerta"' })}
+        ${odk('senales', { title: 'Señales hoy', value: `<span id="kpi-sig">${sigToday}</span>`, sub: `${gUp(sigWeeks[7], sigWeeks[6])} vs semana pasada · 5 fuentes`, extra: spark(sigWeeks), link: 'Ver señales en vivo', linkA: 'data-a="rscroll" data-v="sec-vivo"' })}
+        ${odk('likes', { title: 'Me gusta verificados (7 días)', value: likes7, sub: `${gUp(likes7, likesPrev)} vs semana pasada · solo compras reales`, extra: spark(likeWeeks, '#1F9D55'), link: 'Ver piloto', linkA: 'data-a="rpage" data-v="piloto"' })}
+        ${odk('anticipa', { title: 'Anticipación promedio', value: `${k.lead.replace('.', ',')} sem`, sub: `antes del alza en pedidos · precisión ${k.precision}%`, link: 'Ver seguimiento', linkA: 'data-a="rpage" data-v="seguimiento"' })}
+        ${odk('zona', { title: 'Zona más caliente', value: esc(hot.z.name), valueCls: 'odk-t', sub: `${plural(hot.al, 'aliado para revisión', 'aliados para revisión')} · puntaje máximo ${hot.mx}`, link: 'Ver zona', linkA: `data-a="rzone" data-v="${hot.z.id}"` })}
+        ${odk('demanda', { cls: 'cold', title: 'Demanda sin oferta', value: um.reduce((a, u) => a + u.count_7d, 0), sub: `búsquedas sin resultado · la más buscada: "${esc(um[0].query)}"`, link: 'Ver búsquedas', linkA: 'data-a="rscroll" data-v="sec-demanda"' })}
+      </div>
+      <div class="od-insights">
+        ${lead ? `<div class="od-ins"><i style="background:var(--accent)"></i><span><b>${esc(lead.a.r.name)}</b> lidera con ${lead.total} puntos: ${esc(best.why.charAt(0).toLowerCase() + best.why.slice(1))}.</span></div>` : ''}
+        <div class="od-ins"><i style="background:#1F9D55"></i><span>Los me gusta verificados ${likes7 >= likesPrev ? 'subieron' : 'bajaron'} esta semana: ${likes7} contra ${likeWeeks[6]}.</span></div>
+        <div class="od-ins"><i style="background:var(--blue)"></i><span>"${esc(um[0].query)}" se buscó ${um[0].count_7d} veces en ${esc(um[0].comuna)} sin encontrar resultado.</span></div>
+      </div>
+    </section>
+
+    <section class="od-sec" id="sec-prioridad">
+      <div class="od-sh"><div><h2>Prioridad de hoy</h2><p>Ordenada por puntaje de oportunidad. Radar propone; una persona decide.</p></div><button class="od-link" data-a="rpage" data-v="cartera">Ver todos los aliados</button></div>
+      <div class="od-cards2">
+        <div class="od-card"><div class="od-ch"><div><h3>Aliados a mirar</h3><p>Puntaje de 0 a 100 y el motivo principal</p></div></div>
+          ${top.map((b, i) => { const bw = [...b.parts].sort((x, y) => y.v / y.max - x.v / x.max)[0], dec = decisionFor(b.a.r.id); return `<button class="prio-row" data-a="ropen" data-r="${b.a.r.id}">
+            <span class="rk">${i + 1}</span>${thumb(b.a.r)}<span class="tx"><b>${esc(b.a.r.name)}</b><span>${esc(bw.why)}</span></span>
+            <span class="end">${scoreCell(b.total)}${dec ? `<span class="tag t-vio">${esc(dec.option)}</span>` : stateTag(b.a.estado)}</span></button>`; }).join('')}</div>
+        <div class="od-card feedcard" id="sec-vivo"><div class="od-ch"><div><h3><span class="pulse"></span>Señales en tiempo real</h3><p><b class="mono" id="feed-count">${feed.length}</b> en esta sesión</p></div></div>
+          <div class="feed" id="feed" tabindex="0" role="region" aria-label="Señales recientes">${feedHTML()}</div></div>
+      </div>
+    </section>
+
+    <section class="od-sec" id="sec-tendencia">
+      <div class="od-sh"><div><h2>Interés vs. pedidos</h2><p>Índice de 5 fuentes (promedio del período = 100) contra pedidos reales. Cuando el interés sube y los pedidos no, está la ventana para actuar.</p></div></div>
+      <div class="od-card">
+        <div class="od-ch"><div class="legend"><span><i style="background:var(--accent)"></i>Interés combinado</span><span><i class="dash"></i>Pedidos</span></div>
+          <select data-f="chartId" aria-label="Aliado del gráfico" style="width:auto">${board.map(b => `<option value="${b.a.r.id}" ${b.a.r.id === r.chartId ? 'selected' : ''}>${esc(b.a.r.name)}</option>`).join('')}</select></div>
+        <div class="chart-wrap"><canvas id="mainChart" aria-label="Gráfico de interés y pedidos de ${esc(cc.r.name)}"></canvas></div>
+        <div class="insight">${icon('lightning')}<span>En 8 semanas el interés por <b>${esc(cc.r.name)}</b> cambió <b>${pct(gi)}</b> y los pedidos <b>${pct(gp)}</b>. ${ins}</span></div>
+      </div>
+    </section>
+
+    <section class="od-sec" id="sec-demanda">
+      <div class="od-sh"><div><h2>Cartera y demanda</h2><p>Dónde está cada aliado según su estado, y qué busca la gente sin encontrarlo.</p></div></div>
+      <div class="od-cards2">
+        <div class="od-card"><div class="od-ch"><div><h3>Radar de la cartera</h3><p>Más cerca del centro, mayor puntaje. Toca un punto para ver la evidencia.</p></div></div>${radarPlot(board, top)}</div>
+        <div class="od-card"><div class="od-ch"><div><h3>Demanda sin oferta</h3><p>Búsquedas sin resultado, últimos 7 días</p></div></div>
+          ${um.slice(0, 6).map(u => { const mx = um[0].count_7d; return `<div class="dem-row"><div class="fun-top"><span>"${esc(u.query)}" <em>${esc(u.comuna)}</em></span><span class="mono">${u.count_7d} <span class="${u.count_7d > u.count_prev ? 'delta-up' : 'muted'}" style="font-size:12px">${u.count_prev ? pct(Math.round((u.count_7d - u.count_prev) / u.count_prev * 100)) : 'nueva'}</span></span></div><span class="fun-bar"><i style="width:${u.count_7d / mx * 100}%;background:var(--blue)"></i></span></div>`; }).join('')}</div>
+      </div>
+      <p class="od-end">Fin del resumen · <button data-a="rscroll" data-v="sec-resumen">volver al inicio</button></p>
+    </section>`;
+}
+
+/* ---------- Cómo leer el panel ---------- */
+function radarGuia() {
+  const g = [
+    ['Para revisión', 'Aliado que cumple las 4 condiciones de la regla. Es una propuesta: una persona decide si se actúa.'],
+    ['En observación', 'Alguna fuente subió 2 semanas seguidas, pero todavía no cumple todo. Se mira, no se actúa.'],
+    ['Puntaje de oportunidad', 'De 0 a 100. Suma interés, amplitud, persistencia, validación MAPPI y ventana para actuar, y resta antiseñales.'],
+    ['Interés combinado', 'Índice que junta 5 fuentes. 100 es el promedio del período; sobre 100, el interés está creciendo.'],
+    ['Ventana para actuar', 'Cuánto subió el interés comparado con los pedidos. Si los pedidos ya subieron, la ventana pasó.'],
+    ['Me gusta verificados', 'Un toque que da quien compró y recibió el plato. Sin comentarios, para cuidar a las marcas y mantener la señal limpia.'],
+    ['Antiseñales', 'Problemas de operación (demoras, quiebres, reclamos) que restan puntaje aunque el interés crezca.'],
+    ['Demanda sin oferta', 'Búsquedas en Rappi sin resultado. Pistas de lo que falta en la app.'],
+  ];
+  const srcs = [['tiktok-logo', 'TikTok: videos y menciones', 'Externa'], ['google-logo', 'Reseñas de Google', 'Externa'], ['instagram-logo', 'Instagram: menciones', 'Externa'], ['magnifying-glass', 'Búsquedas y visitas a menús', 'Interna'], ['heart', 'MAPPI: guardados y me gusta verificados', 'Interna']];
+  return `<section class="od-sec"><div class="od-sh"><div><h2>¿Cómo leer el panel?</h2><p>Las palabras que más se usan, explicadas sin jerga.</p></div></div>
+    <div class="od-gloss">${g.map(([t, p]) => `<div class="od-g"><h4>${t}</h4><p>${p}</p></div>`).join('')}</div></section>
+    <section class="od-sec"><div class="od-sh"><div><h2>Fuentes</h2><p>De dónde vienen las señales. Ninguna alerta sale de una sola fuente.</p></div></div>
+      <div class="od-mix-list">${srcs.map(([ic, l, t]) => `<div class="od-src"><span class="od-src-t">${icon(ic)}${t}</span><small>${l}</small></div>`).join('')}</div></section>
+    <section class="od-sec"><div class="od-sh"><div><h2>Hipótesis abiertas</h2><p>Lo que el equipo está evaluando con estas señales.</p></div></div>
+      <div class="od-card">${DB.data.hypotheses.map(h => `<button class="src" style="width:100%;text-align:left" data-a="ropen" data-r="${h.restaurant_id}"><span><b style="font-size:13.5px">${esc(h.title)}</b><div class="fine">${esc(h.text)}</div></span><span class="tag ${h.status === 'Para revisión' ? 't-acc' : h.status === 'En evaluación' ? 't-vio' : 't-mut'}">${esc(h.status)}</span></button>`).join('')}</div>
+      <p class="od-end">Fin del panel · <button data-a="rpage" data-v="signals">volver al resumen</button></p></section>`;
 }
 
 /* ---------- Cartera ---------- */
@@ -268,15 +338,14 @@ function radarRegla() {
 function radarPiloto() {
   const k = Engine.kpis(), d = DB.data, now = DB.nowMs(), in30 = x => now - Date.parse(x.created_at) < 30 * DAY;
   const revs = d.reviews.filter(in30), inc = revs.filter(r => r.rewarded), sp = revs.filter(r => !r.rewarded);
-  const p = a => a.length ? Math.round(a.filter(r => r.answer === 'si').length / a.length * 100) : 0;
   const coins = d.wallet_ledger.filter(l => l.delta > 0 && in30(l)).reduce((a, l) => a + l.delta, 0) + inc.length * 20;
   const saves = d.saves.filter(in30).length, orders = d.orders.filter(o => o.source !== 'rappi' && in30(o)).length;
   const share = (a, b) => b ? Math.round(a / b * 100) : 0;
-  return `<div class="rhead"><div><h1>Piloto y KPIs</h1><p>Cómo sabremos si funciona: cuántas personas usan, recomiendan y guardan, y cuántas señales distintas recibe Rappi. Se calculan sobre la base simulada y se actualizan con lo que haces en MAPPI.</p></div></div>
+  return `<div class="rhead"><div><h1>Piloto y KPIs</h1><p>Cómo sabremos si funciona: cuántas personas usan, dan me gusta y guardan, y cuántas señales distintas recibe Rappi. Se calculan sobre la base simulada y se actualizan con lo que haces en MAPPI.</p></div></div>
     <h3 style="font-size:15px">Para el piloto con usuarios</h3>
     <div class="kpis">
       <div class="kpi"><div class="k">Usan MAPPI</div><div class="v">${k.active}</div><div class="s">${share(k.active, d.meta.exposed_users)}% de ${d.meta.exposed_users.toLocaleString('es-CL')} que la vieron (30 días)</div></div>
-      <div class="kpi"><div class="k">Dispuestas a recomendar</div><div class="v">${k.recommend}</div><div class="s">${share(k.recommend, k.active)}% de quienes la usan opinó</div></div>
+      <div class="kpi"><div class="k">Dan me gusta</div><div class="v">${k.recommend}</div><div class="s">${share(k.recommend, k.active)}% de quienes la usan dio me gusta</div></div>
       <div class="kpi"><div class="k">Dispuestas a guardar</div><div class="v">${k.save}</div><div class="s">${share(k.save, d.meta.exposed_users)}% de quienes la vieron</div></div>
       <div class="kpi"><div class="k">Siguen perfiles afines</div><div class="v">${new Set(d.follows.map(f => f.follower_id)).size}</div><div class="s">personas en la red de confianza</div></div>
     </div>
@@ -288,15 +357,15 @@ function radarPiloto() {
       <div class="kpi"><div class="k">Anticipación</div><div class="v">${k.lead.replace('.', ',')}</div><div class="s">semanas antes de ventas</div></div>
     </div>
     <div class="two">
-      <div class="panel"><h3>${icon('funnel')}Del guardado a la opinión (30 días)</h3>
-        <div class="vbars">${[['Guardados', saves, saves], ['Pedidos desde MAPPI', orders, saves], ['Opiniones verificadas', revs.length, saves]].map(([l, v, base]) => `<div class="vbar"><span>${l}</span><span class="b"><i style="width:${share(v, base)}%;background:var(--accent)"></i></span><b>${v}</b></div>`).join('')}</div>
-        <p class="fine" style="margin-top:10px">${share(orders, saves)}% de los guardados termina en pedido y ${share(revs.length, orders)}% de los pedidos en una opinión.</p></div>
-      <div class="panel"><h3>${icon('shield-check')}Calidad de las opiniones</h3>
-        <div class="vbars"><div class="vbar"><span>Con monedas</span><span class="b"><i style="width:${p(inc)}%;background:var(--accent)"></i></span><b>${p(inc)}%</b></div><div class="vbar"><span>Espontáneas</span><span class="b"><i style="width:${p(sp)}%;background:var(--blue)"></i></span><b>${p(sp)}%</b></div></div>
-        <p class="fine" style="margin-top:10px">Porcentaje que recomienda el plato. ${Math.abs(p(inc) - p(sp)) > 10 ? '<b style="color:var(--warn)">La diferencia supera 10 puntos: revisar si el incentivo sesga.</b>' : 'La diferencia es menor a 10 puntos: no hay señal de sesgo por el incentivo.'} Todas las opiniones exigen compra verificada y el premio es igual para Sí, Depende o No.</p></div>
+      <div class="panel"><h3>${icon('funnel')}Del guardado al me gusta (30 días)</h3>
+        <div class="vbars">${[['Guardados', saves, saves], ['Pedidos desde MAPPI', orders, saves], ['Me gusta verificados', revs.length, saves]].map(([l, v, base]) => `<div class="vbar"><span>${l}</span><span class="b"><i style="width:${share(v, base)}%;background:var(--accent)"></i></span><b>${v}</b></div>`).join('')}</div>
+        <p class="fine" style="margin-top:10px">${share(orders, saves)}% de los guardados termina en pedido y ${share(revs.length, orders)}% de los pedidos recibe un me gusta.</p></div>
+      <div class="panel"><h3>${icon('shield-check')}Me gusta con y sin monedas</h3>
+        <div class="vbars"><div class="vbar"><span>Con monedas</span><span class="b"><i style="width:${share(inc.length, revs.length)}%;background:var(--accent)"></i></span><b>${inc.length}</b></div><div class="vbar"><span>Espontáneos</span><span class="b"><i style="width:${share(sp.length, revs.length)}%;background:var(--blue)"></i></span><b>${sp.length}</b></div></div>
+        <p class="fine" style="margin-top:10px">${share(inc.length, revs.length)}% de los me gusta recibió monedas. Si esa parte crece mucho más rápido que los espontáneos, revisar si el incentivo infla la señal. Todos exigen compra verificada y no hay comentarios.</p></div>
     </div>
     <div class="panel"><h3>${icon('ticket')}Costo del incentivo</h3>
-      <p style="font-size:14px">En 30 días se entregaron cerca de <b class="mono">${coins}</b> monedas. Con 100 monedas = $1.000 de beneficio, el costo máximo es <b class="mono">${clp(coins * 10)}</b>, o <b class="mono">${clp(revs.length ? coins * 10 / revs.length : 0)}</b> por opinión verificada.</p>
+      <p style="font-size:14px">En 30 días se entregaron cerca de <b class="mono">${coins}</b> monedas. Con 100 monedas = $1.000 de beneficio, el costo máximo es <b class="mono">${clp(coins * 10)}</b>, o <b class="mono">${clp(revs.length ? coins * 10 / revs.length : 0)}</b> por me gusta verificado.</p>
       <p class="fine" style="margin-top:6px">El costo real es menor: no todas las monedas se canjean. Valores ilustrativos, por validar con Rappi.</p></div>`;
 }
 
@@ -322,8 +391,8 @@ function radarDetail(id) {
   const sess = DB.data.events.filter(e => e.restaurant_id === id && e.user_id === 'u_me');
   const sDelta = t => { const n = sess.filter(e => e.type === t).length; return n ? `+${n} en esta sesión` : ''; };
   const crit = [['perfil', 'Perfil objetivo'], ['personas', 'Distintas personas'], ['repite', 'Se repite'], ['sostiene', 'Se sostiene']];
-  const tagsCount = (ans) => { const m = {}; DB.data.reviews.filter(x => x.restaurant_id === id && ans.includes(x.answer)).forEach(x => (x.tags || []).forEach(t => m[t] = (m[t] || 0) + 1)); return Object.entries(m).sort((x, y) => y[1] - x[1]).slice(0, 3); };
-  const good = tagsCount(['si']), bad = tagsCount(['dep', 'no']);
+  const likeMap = {}; DB.data.reviews.filter(x => x.restaurant_id === id).forEach(x => { const n = DB.dish(x.dish_id)?.name; if (n) likeMap[n] = (likeMap[n] || 0) + 1; });
+  const topLikes = Object.entries(likeMap).sort((x, y) => y[1] - x[1]).slice(0, 3);
   const visita = c.visit || (a.estado === 'alerta' || a.estado === 'obs' ? { por: c.summary, rev: c.anti_signals[0] || 'Capacidad en hora punta y disponibilidad.', pre: '¿Quiere crecer en delivery? ¿Tiene acuerdos con otras apps?' } : null);
   const ext = DB.data.external_content.filter(x => x.restaurant_id === id);
   const evs = DB.data.events.filter(e => e.restaurant_id === id && e.user_id === 'u_me').slice(-8).reverse();
@@ -352,9 +421,9 @@ function radarDetail(id) {
       <p class="fine" style="margin-bottom:12px">Personas distintas por acción. Pueden superponerse; no es un embudo obligatorio.</p>
       <div class="funnel">${[['exp', 'Lo vieron', 'impression'], ['open', 'Abrieron la ficha', 'open_restaurant'], ['save', 'Guardaron', 'save'], ['menu', 'Abrieron el menú', 'open_menu'], ['buy', 'Compraron', 'order'], ['share', 'Compartieron', 'share']].map(([k, l, t]) => `<div class="fstep"><div class="v">${v.funnel[k]}</div><div class="k">${l}</div><div class="d">${sDelta(t)}</div></div>`).join('')}</div>
       <div class="three" style="margin-top:12px">
-        <div><div class="fine" style="margin-bottom:6px">Recomiendan el plato (opiniones verificadas)</div><div class="vbars"><div class="vbar"><span>Con monedas</span><span class="b"><i style="width:${v.pctInc ?? 0}%;background:var(--accent)"></i></span><b>${v.pctInc ?? '-'}${v.pctInc != null ? '%' : ''}</b></div><div class="vbar"><span>Espontáneas</span><span class="b"><i style="width:${v.pctSpont ?? 0}%;background:var(--blue)"></i></span><b>${v.pctSpont ?? '-'}${v.pctSpont != null ? '%' : ''}</b></div></div><p class="fine" style="margin-top:6px">${v.inc} con monedas y ${v.spont} espontáneas. Se leen aparte.</p></div>
-        <div><div class="fine" style="margin-bottom:6px">Lo que más valoran y lo que falla</div>${good.length || bad.length ? `<div class="qtags" style="gap:6px">${good.map(([t, n]) => `<span class="tag t-good">${esc(t)} ${n}</span>`).join('')}${bad.map(([t, n]) => `<span class="tag t-bad">${esc(t)} ${n}</span>`).join('')}</div>` : '<p class="fine">Sin etiquetas todavía.</p>'}</div>
-        <div><div class="fine" style="margin-bottom:6px">Perfiles afines que lo recomiendan</div>${v.recommenders.length ? `<div style="display:flex;gap:8px;align-items:center"><span class="avatars">${v.recommenders.slice(0, 5).map(u => avatar(u, 'sm')).join('')}</span><span class="fine">${plural(v.recommenders.length, 'perfil público', 'perfiles públicos')} con ${DB.data.follows.filter(f => v.recommenders.some(u => u.id === f.followee_id)).length} seguidores en total</span></div>` : '<p class="fine">Todavía ninguno.</p>'}</div>
+        <div><div class="fine" style="margin-bottom:6px">Me gusta verificados (8 semanas)</div><div class="vbars"><div class="vbar"><span>Con monedas</span><span class="b"><i style="width:${v.total ? v.inc / v.total * 100 : 0}%;background:var(--accent)"></i></span><b>${v.inc}</b></div><div class="vbar"><span>Espontáneos</span><span class="b"><i style="width:${v.total ? v.spont / v.total * 100 : 0}%;background:var(--blue)"></i></span><b>${v.spont}</b></div></div><p class="fine" style="margin-top:6px">${v.pctSi ?? 0}% de los pedidos recibe me gusta. Se leen aparte.</p></div>
+        <div><div class="fine" style="margin-bottom:6px">Platos con más me gusta</div>${topLikes.length ? `<div class="qtags" style="gap:6px">${topLikes.map(([t, n]) => `<span class="tag t-good">${icon('heart-fill')}${esc(t)} ${n}</span>`).join('')}</div>` : '<p class="fine">Sin me gusta todavía.</p>'}</div>
+        <div><div class="fine" style="margin-bottom:6px">Perfiles afines a los que les gusta</div>${v.recommenders.length ? `<div style="display:flex;gap:8px;align-items:center"><span class="avatars">${v.recommenders.slice(0, 5).map(u => avatar(u, 'sm')).join('')}</span><span class="fine">${plural(v.recommenders.length, 'perfil público', 'perfiles públicos')} con ${DB.data.follows.filter(f => v.recommenders.some(u => u.id === f.followee_id)).length} seguidores en total</span></div>` : '<p class="fine">Todavía ninguno.</p>'}</div>
       </div></div>
     <div class="two">
       <div class="panel"><h3>${icon('user')}Quién genera la señal</h3><ul class="bul"><li>${esc(a.crit.perfil[1])}</li><li>${esc(a.crit.personas[1])}</li><li><b>Plato que concentra el interés:</b> ${esc(c.star_dish)} (${c.star_share}% de las menciones)</li></ul>
@@ -389,16 +458,16 @@ function drawCharts() {
   const mk = (cvId, rid) => {
     const cv = document.getElementById(cvId); if (!cv) return;
     const a = Engine.analyze(rid), po = Engine.idx(a.s.pedidos).map(Math.round), ctx = cv.getContext('2d');
-    const g = ctx.createLinearGradient(0, 0, 0, cv.parentElement.clientHeight || 260); g.addColorStop(0, 'rgba(255,68,31,.30)'); g.addColorStop(1, 'rgba(255,68,31,0)');
-    Chart.defaults.font.family = 'Geist, system-ui, sans-serif'; Chart.defaults.color = '#A1A1AA';
+    const g = ctx.createLinearGradient(0, 0, 0, cv.parentElement.clientHeight || 260); g.addColorStop(0, 'rgba(222,52,16,.22)'); g.addColorStop(1, 'rgba(222,52,16,0)');
+    Chart.defaults.font.family = 'Inter, system-ui, sans-serif'; Chart.defaults.color = '#666672';
     const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches || !S.r._animChart;
     charts.push(new Chart(ctx, { type: 'line', data: { labels: weekLabels(), datasets: [
-      { label: 'Interés combinado', data: a.ix, borderColor: '#FF441F', backgroundColor: g, borderWidth: 3, fill: true, tension: .4, pointRadius: 0, pointHoverRadius: 5, pointHoverBackgroundColor: '#FF441F', pointHoverBorderColor: '#fff', pointHoverBorderWidth: 2 },
-      { label: 'Pedidos', data: po, borderColor: '#6AB0FF', backgroundColor: 'transparent', borderWidth: 2, borderDash: [6, 5], tension: .4, pointRadius: 0, pointHoverRadius: 4, pointHoverBackgroundColor: '#6AB0FF', pointHoverBorderColor: '#fff', pointHoverBorderWidth: 2 }] },
+      { label: 'Interés combinado', data: a.ix, borderColor: '#DE3410', backgroundColor: g, borderWidth: 2.5, fill: true, tension: .4, pointRadius: 0, pointHoverRadius: 5, pointHoverBackgroundColor: '#DE3410', pointHoverBorderColor: '#fff', pointHoverBorderWidth: 2 },
+      { label: 'Pedidos', data: po, borderColor: '#2A63D6', backgroundColor: 'transparent', borderWidth: 2, borderDash: [6, 5], tension: .4, pointRadius: 0, pointHoverRadius: 4, pointHoverBackgroundColor: '#2A63D6', pointHoverBorderColor: '#fff', pointHoverBorderWidth: 2 }] },
       options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, animation: reduce ? false : { duration: 500 },
-        plugins: { legend: { display: false }, tooltip: { backgroundColor: '#26262A', borderColor: 'rgba(255,255,255,.12)', borderWidth: 1, titleColor: '#F4F4F5', bodyColor: '#A1A1AA', padding: 12, cornerRadius: 10,
+        plugins: { legend: { display: false }, tooltip: { backgroundColor: '#1A1A22', borderColor: 'rgba(0,0,0,.1)', borderWidth: 1, titleColor: '#FFFFFF', bodyColor: '#C9C9D2', padding: 12, cornerRadius: 10,
           callbacks: { title: it => 'Semana del ' + it[0].label, label: it => it.datasetIndex === 0 ? ` Interés combinado: ${it.parsed.y}` : ` Pedidos: ${a.s.pedidos[it.dataIndex]} (índice ${it.parsed.y})` } } },
-        scales: { x: { grid: { display: false }, border: { display: false }, ticks: { maxRotation: 0, font: { size: 11 } } }, y: { grid: { color: 'rgba(255,255,255,.06)' }, border: { display: false }, ticks: { font: { size: 11 } } } } } }));
+        scales: { x: { grid: { display: false }, border: { display: false }, ticks: { maxRotation: 0, font: { size: 11 } } }, y: { grid: { color: 'rgba(26,26,34,.07)' }, border: { display: false }, ticks: { font: { size: 11 } } } } } }));
   };
   mk('mainChart', S.r.chartId); if (S.r.open) mk('detailChart', S.r.open);
 }

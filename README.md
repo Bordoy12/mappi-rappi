@@ -46,7 +46,7 @@ Luego entra a http://localhost:8000. Abrir `index.html` con doble clic también 
 
 Cada vez que subas una versión nueva, GitHub guarda la anterior (pestaña **Commits**). Si algo se rompe, puedes volver atrás.
 
-Truco: en `index.html` los archivos CSS y JS terminan en `?v=4`. Cuando cambies algo, sube ese número (por ejemplo `?v=5`) para que el celular no muestre la versión vieja guardada en caché.
+Truco: en `index.html` los archivos CSS y JS terminan en `?v=5`. Cuando cambies algo, sube ese número (por ejemplo `?v=6`) para que el celular no muestre la versión vieja guardada en caché.
 
 Con Git instalado, los pasos 3 en adelante también se hacen desde la terminal:
 

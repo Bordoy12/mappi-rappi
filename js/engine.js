@@ -115,7 +115,9 @@ const Engine = {
     const d = DB.data, now = DB.nowMs();
     const revs = d.reviews.filter(x => x.restaurant_id === rid);
     const recent = revs.filter(x => now - Date.parse(x.created_at) < 56 * DAY);
-    const pct = arr => arr.length ? Math.round(arr.filter(x => x.answer === 'si').length / arr.length * 100) : null;
+    // Con solo "me gusta", la calidad se mide como la parte de los pedidos que recibe uno
+    const orders = d.orders.filter(x => x.restaurant_id === rid && now - Date.parse(x.created_at) < 56 * DAY).length;
+    const pct = arr => orders ? Math.min(100, Math.round(arr.length / orders * 100)) : null;
     const inc = recent.filter(x => x.rewarded), spont = recent.filter(x => !x.rewarded);
     const week = revs.filter(x => now - Date.parse(x.created_at) < 7 * DAY);
     const recommenders = [...new Set(recent.filter(x => x.answer === 'si').map(x => x.user_id))].map(id => DB.user(id)).filter(u => u && u.public);
@@ -150,7 +152,7 @@ const Engine = {
       { k: 'interes', l: 'Interés', max: 25, v: Math.round(25 * soft(a.gi, 350)), why: `Índice combinado ${a.gi >= 0 ? '+' : ''}${a.gi}% en 8 semanas` },
       { k: 'amplitud', l: 'Amplitud', max: 20, v: clamp(Math.round(a.grow.length / 5 * 12 + accounts), 20), why: `${a.grow.length} de 5 fuentes crecen; ${a.crit.personas[0] ? `${a.r.distinct_accounts} cuentas distintas` : 'concentrado en pocas cuentas'}` },
       { k: 'persistencia', l: 'Persistencia', max: 15, v: clamp(Math.round(a.streak / 7 * 15), 15), why: `${a.streak} semana${a.streak === 1 ? '' : 's'} seguidas al alza` },
-      { k: 'mappi', l: 'Validación MAPPI', max: 20, v: clamp(Math.round(momentum + (v.pctSi != null ? v.pctSi / 100 * 8 : 0) + Math.min(4, v.funnel.buy / 3)), 20), why: `${mappiNow} guardados esta semana, ${v.pctSi ?? 0}% recomienda, ${v.funnel.buy} compras` },
+      { k: 'mappi', l: 'Validación MAPPI', max: 20, v: clamp(Math.round(momentum + (v.pctSi != null ? v.pctSi / 100 * 8 : 0) + Math.min(4, v.funnel.buy / 3)), 20), why: `${mappiNow} guardados esta semana, ${v.pctSi ?? 0}% de los pedidos con me gusta, ${v.funnel.buy} compras` },
       { k: 'ventana', l: 'Ventana para actuar', max: 20, v: late ? 0 : Math.round(20 * soft(a.gi - a.ordersGrowth, 300)), why: late ? 'Los pedidos ya subieron: la ventana pasó' : `Interés ${a.gi >= 0 ? '+' : ''}${a.gi}% contra pedidos ${a.ordersGrowth >= 0 ? '+' : ''}${a.ordersGrowth}%` },
     ];
     const penalties = [];

@@ -37,7 +37,7 @@ const Q = {
 // Métricas que Radar lee de un aliado; se comparan antes y después de cada acción
 function metrics(rid) {
   const s = Engine.series(rid), v = Engine.validation(rid), f = v.funnel;
-  return { saves: ['Guardados esta semana', s.mappi[7]], buy: ['Compraron (7 días)', f.buy], reviews: ['Opiniones verificadas', v.total], pctSi: ['% que recomienda', v.pctSi ?? 0],
+  return { saves: ['Guardados esta semana', s.mappi[7]], buy: ['Compraron (7 días)', f.buy], reviews: ['Me gusta verificados', v.total], pctSi: ['% de pedidos con me gusta', v.pctSi ?? 0],
     menu: ['Abrieron el menú (7 días)', f.menu], open: ['Abrieron la ficha (7 días)', f.open], share: ['Compartieron (7 días)', f.share], busq: ['Búsquedas esta semana', s.busquedas ? s.busquedas[7] : 0], exp: ['Lo vieron (7 días)', f.exp] };
 }
 const changeTxt = c => `${c.l}: ${c.from} a ${c.to}`;
@@ -65,7 +65,7 @@ function bootFeed() {
 }
 
 /* ---------- Operaciones del negocio ---------- */
-const ANSWERS = { si: 'Sí', dep: 'Depende', no: 'No' };
+const ANSWERS = { si: 'Me gusta' };
 const REVIEW_REWARD = 20, SAVED_BONUS = 10, WEEKLY_REWARD_CAP = 3, SHIPPING = 1290;
 const DECISION_STAGE = { 'Seguir observando': 'evaluacion', 'Solicitar información': 'evaluacion', 'Contactar al aliado': 'contactado', 'Proponer acción comercial': 'accion', 'Descartar por ahora': 'descartado' };
 const NEXT_STAGE_OF = { evaluacion: 'contactado', contactado: 'accion', accion: 'medido' };
@@ -125,14 +125,13 @@ const Domain = {
   },
   receive(orderId) { const o = DB.data.orders.find(x => x.id === orderId); o.status = 'recibido'; act('receive', { restaurant_id: o.restaurant_id, order_id: o.id }, null, null, 'orders'); return o; },
   skipReview(rid) { act('skip_review', { restaurant_id: rid }, null, null); },
-  rejectReview(rid) { act('review_rejected', { restaurant_id: rid }, null, null); return 'Solo puedes opinar sobre platos de pedidos que recibiste en Rappi. Pide algo de este menú y, al recibirlo, podrás opinar.'; },
-  // Compra verificada, mismo premio para cualquier respuesta, tope semanal y bono por probar algo guardado
-  publishReview({ orderId, answer, text, tags = [] }) {
-    const txt = (text || '').trim();
-    if (!answer) return { error: 'Elige Sí, Depende o No.' };
-    // El comentario es opcional (feedback de Rappi: a las marcas no les gustan los comentarios abiertos)
+  rejectReview(rid) { act('review_rejected', { restaurant_id: rid }, null, null); return 'Solo puedes dar me gusta a platos que recibiste en Rappi. Pide algo de este menú y, al recibirlo, podrás darle me gusta.'; },
+  // "Me gusta" con compra verificada: sin comentarios ni etiquetas (las marcas no quieren texto abierto),
+  // tope semanal de premios y bono por probar algo guardado
+  publishReview({ orderId }) {
+    const answer = 'si', txt = '', tags = [];
     const o = DB.data.orders.find(x => x.id === orderId);
-    if (!o || o.user_id !== 'u_me' || o.status !== 'recibido') return { error: 'Solo se opina sobre pedidos recibidos.' };
+    if (!o || o.user_id !== 'u_me' || o.status !== 'recibido') return { error: 'Solo puedes dar me gusta a pedidos recibidos.' };
     const r = DB.rest(o.restaurant_id), dsh = DB.dish(o.dish_id), prev = Q.reviewFor(o.id);
     const kind = prev ? 'edit' : Q.weekRewards() >= WEEKLY_REWARD_CAP ? 'limit' : 'ok';
     let bonus = false;
@@ -140,11 +139,11 @@ const Domain = {
       if (prev) { prev.answer = answer; prev.text = txt; prev.tags = [...tags]; return; }
       DB.insert('reviews', { id: DB.id('rv_s'), order_id: o.id, user_id: 'u_me', restaurant_id: o.restaurant_id, dish_id: dsh.id, answer, text: txt, tags: [...tags], rewarded: kind === 'ok', verified: true, created_at: DB.nowISO() });
       if (kind === 'ok') {
-        DB.insert('wallet_ledger', { user_id: 'u_me', delta: REVIEW_REWARD, reason: `Opinión, ${r.name}`, created_at: DB.nowISO() });
+        DB.insert('wallet_ledger', { user_id: 'u_me', delta: REVIEW_REWARD, reason: `Me gusta, ${r.name}`, created_at: DB.nowISO() });
         bonus = DB.data.saves.some(s => s.user_id === 'u_me' && s.restaurant_id === o.restaurant_id && Date.parse(s.created_at) <= Date.parse(o.created_at));
         if (bonus) DB.insert('wallet_ledger', { user_id: 'u_me', delta: SAVED_BONUS, kind: 'bonus', reason: `Bono: probaste ${r.name}, que tenías guardado`, created_at: DB.nowISO() });
       }
-    }, prev ? null : `Opinión verificada: "${ANSWERS[answer]}" sobre ${dsh.name}${kind === 'ok' ? ', con monedas' : ', sin monedas'}`, 'reviews');
+    }, prev ? null : `Me gusta verificado a ${dsh.name}${kind === 'ok' ? ', con monedas' : ', sin monedas'}`, 'reviews');
     return { kind, bonus, coins: kind === 'ok' ? REVIEW_REWARD + (bonus ? SAVED_BONUS : 0) : 0, rid: o.restaurant_id, ans: answer, text: txt };
   },
   redeem(benefitId, { fail = false } = {}) {

@@ -25,7 +25,7 @@ const TOUR = [
   { t: 'Guárdala en "Quiero probar"', done: () => evDone('save', 'azafran'), go: () => { S.view = 'mappi'; A.openRest({ r: 'azafran' }); } },
   { t: 'Pide el bowl', done: () => evDone('order', 'azafran'), go: () => { S.view = 'mappi'; A.order({ r: 'azafran' }); } },
   { t: 'Marca el pedido como recibido', done: () => evDone('receive', 'azafran'), go: () => { S.view = 'mappi'; A.tab({ s: 'orders' }); } },
-  { t: 'Opina con compra verificada', done: () => evDone('review', 'azafran'), go: () => { S.view = 'mappi'; const o = M.myOrders().find(x => x.restaurant_id === 'azafran' && x.status === 'recibido'); if (o && !M.reviewFor(o.id)) A.reviewStart({ o: o.id }); else A.tab({ s: 'orders' }); } },
+  { t: 'Da me gusta con compra verificada', done: () => evDone('review', 'azafran'), go: () => { S.view = 'mappi'; const o = M.myOrders().find(x => x.restaurant_id === 'azafran' && x.status === 'recibido'); if (o && !M.reviewFor(o.id)) A.reviewStart({ o: o.id }); else A.tab({ s: 'orders' }); } },
   { t: 'Mira la señal en Radar', done: () => evDone('radar_open', 'azafran'), go: () => { A.view({ v: 'radar' }); A.ropen({ r: 'azafran' }); } },
   { t: 'Registra la decisión del equipo', done: () => !!decisionFor('azafran'), go: () => { A.view({ v: 'radar' }); A.ropen({ r: 'azafran' }); S.scrollTo = 'decision'; } },
 ];
@@ -52,9 +52,9 @@ function guidePanel() {
       <div class="btn-row"><button class="btn btn-soft" data-a="view" data-v="conectado">${icon('flow-arrow')}Ver flujo conectado</button><button class="btn btn-line" data-a="radarRest" data-r="azafran">Casa Azafrán en Radar</button></div></div>
     <div class="gcard"><h3 style="font-size:16px">Otros casos para probar</h3>
       <ol class="routes">
-        <li><b>Opinión negativa:</b> en Inicio, opina "No" sobre Burger Central. Recibes las mismas 20 monedas y el local no pasa a alerta.</li>
+        <li><b>Sin me gusta:</b> en Inicio, toca "Ahora no" sobre Burger Central. No suma monedas y el local no pasa a alerta.</li>
         <li><b>Búsqueda sin resultado:</b> busca "comida etíope" en Explorar. Aparece en Radar como demanda sin oferta.</li>
-        <li><b>Excepciones:</b> opina desde una ficha sin haber pedido, vuelve a opinar sobre un plato ya premiado o canjea sin saldo.</li>
+        <li><b>Excepciones:</b> da me gusta desde una ficha sin haber pedido, intenta repetir el me gusta de un plato ya premiado o canjea sin saldo.</li>
         <li><b>Cierre del ciclo:</b> en Radar, decide "Proponer acción comercial" y "Destacar en MAPPI" para un aliado. Vuelve a MAPPI y míralo en Inicio.</li>
       </ol>
       <label class="toggle"><input type="checkbox" id="fail" ${S.m.failRedeem ? 'checked' : ''}> Simular error en el próximo canje</label></div>
@@ -148,7 +148,12 @@ function render() {
   // Paneles según la vista
   $('#guide').innerHTML = view === 'mappi' ? guidePanel() : '';
   $('#conn').innerHTML = view === 'conectado' ? connectedView() : '';
-  $('#radar').innerHTML = view === 'radar' ? renderRadar() : '';
+  // Radar: el panel tiene su propio scroll; se conserva al redibujar salvo al cambiar de página
+  if (view === 'radar') {
+    const prev = document.getElementById('rd-scroll'), top = prev && !S.r._anim ? prev.scrollTop : 0;
+    $('#radar').innerHTML = renderRadar();
+    const now = document.getElementById('rd-scroll'); if (now) now.scrollTop = top;
+  } else $('#radar').innerHTML = '';
 
   // Capas flotantes: aviso global, paleta de comandos y exportación
   $('#overlays').innerHTML = `${S.gtoast ? `<div class="gtoast" role="status">${icon('check-circle')}<span>${esc(S.gtoast)}</span></div>` : ''}${S.cmd ? cmdHTML() : ''}${S.exportBox ? `<div class="modal-bg"><div class="modal theme-radar" role="dialog" aria-modal="true" aria-labelledby="exp-t">
@@ -246,16 +251,16 @@ const A = {
   confirmOrder() { const m = S.m; Domain.placeOrder(m.rest, m.pick || DB.dishesOf(m.rest)[0].id, m.qty, m.useCoupon); m.stack = []; m.screen = 'tracking'; m._anim = true; },
   received() { Domain.receive(M.myOrders()[0].id); },
   skipReview() { S.m.stack = []; S.m.screen = 'home'; S.m.showLast = true; S.m._anim = true; Domain.skipReview(M.lastUnreviewed()?.restaurant_id); },
-  reviewStart(d) { const prev = M.reviewFor(d.o); S.m.draft = { orderId: d.o, ans: prev?.answer || null, text: prev?.text || '', tags: prev?.tags ? [...prev.tags] : [], err: '' }; go('review'); },
+  reviewStart(d) { const prev = M.reviewFor(d.o); S.m.draft = { orderId: d.o, ans: prev ? 'si' : null, err: '' }; go('review'); },
   opineHere(d) {
     const o = Q.eligibleOrder(d.r);
     if (o) return A.reviewStart({ o: o.id });
     S.m.notice = Domain.rejectReview(d.r); S.m._keep = true;
   },
-  ans(d) { S.m.draft.ans = d.v; S.m.draft.tags = []; S.m.draft.err = ''; S.m._keep = true; },
-  qtag(d) { const t = S.m.draft.tags, i = t.indexOf(d.v); i >= 0 ? t.splice(i, 1) : t.push(d.v); S.m._keep = true; },
+  // El corazón se marca y luego se confirma con "Dar me gusta"
+  likeTap() { const dr = S.m.draft; dr.ans = dr.ans ? null : 'si'; dr.err = ''; S.m._keep = true; },
   publish() {
-    const m = S.m, dr = m.draft, res = Domain.publishReview({ orderId: dr.orderId, answer: dr.ans, text: dr.text, tags: dr.tags });
+    const m = S.m, dr = m.draft, res = Domain.publishReview({ orderId: dr.orderId });
     if (res.error) { dr.err = res.error; m._keep = true; return; }
     m.lastResult = res; m.stack = []; m.screen = 'done'; m._anim = true; m.bump = res.kind === 'ok'; m.showLast = true;
   },
@@ -282,7 +287,11 @@ const A = {
   rpage(d) { S.r._anim = S.r._animChart = true; S.r.page = d.v; S.r.open = null; window.scrollTo({ top: 0 }); },
   ropen(d) { S.r._anim = S.r._animChart = true; S.r.open = d.r; S.r.chartId = d.r; S.r.form = { opt: '', action: '', owner: '', why: '', next: '' }; S.r.formErr = ''; window.scrollTo({ top: 0 }); Domain.radarOpen(d.r); },
   rclose() { S.r._anim = S.r._animChart = true; S.r.open = null; },
-  rfilter(d) { S.r.page = 'cartera'; S.r.open = null; S.r.fe = d.v; },
+  rfilter(d) { S.r._anim = true; S.r.page = 'cartera'; S.r.open = null; S.r.fe = d.v; },
+  rdef(d) { S.r.def = S.r.def === d.v ? null : d.v; },
+  rzone(d) { S.r._anim = true; S.r.page = 'zonas'; S.r.open = null; S.r.zone = d.v; },
+  rscroll(d) { if (S.r.def) { S.r.def = null; render(); }
+    document.getElementById(d.v)?.scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block: 'start' }); return false; },
   rclear() { Object.assign(S.r, { fc: '', fk: '', fe: '', fq: '' }); },
   rsort(d) { S.r.sort = d.v; },
   zone(d) { S.r.zone = d.v; },
@@ -319,7 +328,9 @@ document.addEventListener('click', e => {
   const rc = t.getBoundingClientRect(); lastClick = { x: rc.left + rc.width / 2, y: rc.top + rc.height / 2 };
   if (t.disabled) return;
   const fn = A[t.dataset.a]; if (!fn) return;
-  e.preventDefault(); fn(t.dataset); render();
+  e.preventDefault();
+  if (fn(t.dataset) === false) return; // acciones que no necesitan redibujar (por ejemplo, desplazarse)
+  render();
 });
 document.addEventListener('keydown', e => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); S.cmd = S.cmd ? null : { q: '', i: 0 }; render(); return; }
@@ -351,8 +362,7 @@ let inputT;
 document.addEventListener('input', e => {
   const t = e.target;
   if (t.id === 'cmdk-q') { S.cmd.q = t.value; S.cmd.i = 0; render(); return; }
-  if (t.id === 'optext') { S.m.draft.text = t.value; const c = document.getElementById('cnt'); if (c) c.textContent = t.value.length; }
-  if (t.dataset.f2) S.r.form[t.dataset.f2] = t.value;
+    if (t.dataset.f2) S.r.form[t.dataset.f2] = t.value;
   if (t.dataset.rule) { (S.r.ruleDraft ||= { ...DB.data.rule })[t.dataset.rule] = Number(t.value); clearTimeout(inputT); inputT = setTimeout(() => { const y = window.scrollY; render(); window.scrollTo(0, y); const el = document.querySelector(`[data-rule="${t.dataset.rule}"]`); el?.focus(); }, 120); }
   if (t.dataset.f && t.type === 'search') { S.r[t.dataset.f] = t.value; clearTimeout(inputT); inputT = setTimeout(() => { render(); const el = document.querySelector(`[data-f="${t.dataset.f}"]`); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 200); }
 });
